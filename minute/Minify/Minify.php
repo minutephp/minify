@@ -90,7 +90,7 @@ namespace Minute\Minify {
                         }, 3600);
 
                         $this->version = ($settings['version'] ?? 0) ?: 0.01;
-                        $this->uglify  = $settings['uglify'] ?: '/usr/local/bin/uglifyjs';
+                        $this->uglify  = @$settings['uglify'] ?: '/usr/local/bin/uglifyjs';
 
                         if (!empty($settings['css']['files'])) {
                             $content = $this->compress('#<lin' . 'k (?:.+)?href="(/static/(?!cache/)[^"]+\.css)"(?:.*)/?>(\r?\n)+?#', $content, 'css', $settings['css']['excludes'] ?? null);

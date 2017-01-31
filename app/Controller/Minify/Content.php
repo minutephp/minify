@@ -44,6 +44,7 @@ namespace App\Controller\Minify {
             if (!empty($content)) {
                 $this->response->setStatusCode(200);
                 $this->response->setHeader('Content-Type', preg_match('/\.js$/', $name) ? 'application/javascript' : 'text/css');
+                $this->response->setHeader('Cache-Control', 'max-age=31622400, public');
                 $this->response->setContent($content);
             } else {
                 $this->response->setStatusCode(404);
