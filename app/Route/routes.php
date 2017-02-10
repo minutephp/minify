@@ -15,7 +15,8 @@ $router->get('/admin/minify/reset', 'Admin/Minify/Reset', 'admin')
 $router->get('/admin/minify/truncate', 'Admin/Minify/Truncate', 'admin')
        ->setDefault('_noView', true);
 
-$router->get('/static/cache/{version}/{name}', 'Minify/Content.php', false);
+$router->get('/static/cache/{version}/{name}', 'Minify/Content.php', false)
+       ->setDefault('_noView', true);
 /*, 'm_minified_data[name] as minified')
        ->setReadPermission('minified', Permission::EVERYONE)->setDefault('_noView', true)
        ->addConstraint('minified', function ($builder) use ($router) {
