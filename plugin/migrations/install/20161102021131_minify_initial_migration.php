@@ -12,7 +12,7 @@ class MinifyInitialMigration extends AbstractMigration
         $table = $this->table('m_minified_data', array('id' => 'minify_data_id'));
         $table
             ->addColumn('created_at', 'datetime', array())
-            ->addColumn('version', 'float', array())
+            ->addColumn('version', 'string', array('limit' => 50))
             ->addColumn('name', 'string', array('limit' => 255))
             ->addColumn('content', 'text', array('limit' => MysqlAdapter::TEXT_LONG))
             ->addIndex(array('name', 'version'), array('unique' => true))

@@ -2,14 +2,12 @@
 /**
  * Created by: MinutePHP framework
  */
+
 namespace App\Controller\Minify {
 
     use App\Model\MMinifiedDatum;
     use Minute\Cache\QCache;
     use Minute\Http\HttpResponseEx;
-    use Minute\Routing\RouteEx;
-    use Minute\View\Helper;
-    use Minute\View\View;
 
     class Content {
         /**
@@ -45,6 +43,10 @@ namespace App\Controller\Minify {
                 $this->response->setStatusCode(200);
                 $this->response->setHeader('Content-Type', preg_match('/\.js$/', $name) ? 'application/javascript' : 'text/css');
                 $this->response->setHeader('Cache-Control', 'max-age=31622400, public');
+                $this->response->setHeader('Access-Control-Allow-Origin', "*");
+                $this->response->setHeader('Access-Control-Allow-Headers', "Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
+                $this->response->setHeader('Access-Control-Allow-Methods', "POST, GET, OPTIONS");
+
                 $this->response->setContent($content);
             } else {
                 $this->response->setStatusCode(404);
