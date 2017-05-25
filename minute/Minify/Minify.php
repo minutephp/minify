@@ -14,13 +14,12 @@ namespace Minute\Minify {
     use Assetic\Filter\CssImportFilter;
     use Assetic\Filter\CssMinFilter;
     use Assetic\Filter\CssRewriteFilter;
-    use Assetic\Filter\JSMinFilter;
-    use Assetic\Filter\UglifyJsFilter;
     use Carbon\Carbon;
     use Minute\Cache\QCache;
     use Minute\Config\Config;
     use Minute\Debug\Debugger;
     use Minute\Event\ResponseEvent;
+    use Minute\Filter\JSConcatFilter;
     use Minute\Http\HttpResponseEx;
     use Minute\Log\LoggerEx;
     use Minute\Utils\PathUtils;
@@ -135,24 +134,14 @@ namespace Minute\Minify {
                 if (empty($count)) {
                     set_time_limit(120);
 
-                    $jsFilters = [];
-
-                    if (($this->jsMinifier == 'uglifyjs') && ($uglifyJs = file_exists('/usr/local/bin/uglifyjs'))) {
-                        $uglify = new UglifyJsFilter($uglifyJs);
-                        $uglify->setMangle(false);
-                        $jsFilters = [$uglify];
-                    } elseif ($this->jsMinifier == 'jsMin') {
-                        $jsFilters = [new JSMinFilter()];
-                    }
-
                     $host  = $this->config->getPublicVars('host');
-                    $asset = new AssetCollection(array_filter(array_map(function ($url) use ($type, $host, $jsFilters) {
+                    $asset = new AssetCollection(array_filter(array_map(function ($url) use ($type, $host) {
                         $minified = preg_match('/\.min/', $url);
 
                         if ($type === 'css') {
                             $filters = array_merge([new CssImportFilter(), new CssRewriteFilter()], !$minified ? [new CssMinFilter()] : []);
                         } elseif (!$minified) {
-                            $filters = !$minified ? $jsFilters : [];
+                            $filters = [new JSConcatFilter()];
                         }
 
                         $url = filter_var($url, FILTER_VALIDATE_URL) ? $url : sprintf("%s/%s", $host, ltrim($url, '/'));
