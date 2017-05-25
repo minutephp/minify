@@ -53,24 +53,41 @@
                             </div>
                         </div>
 
-                        <div class="form-group" ng-show="settings.css.files && settings.advanced">
-                            <label class="col-sm-3 control-label" for="exclude_css"><span translate="">Exclude CSS assets:</span></label>
-                            <div class="col-sm-9">
-                                <input type="text" class="form-control" id="exclude_css" placeholder="Regular expression to exclude any CSS assets (optional)" ng-model="settings.css.excludes"
-                                       ng-required="false">
-                                <p class="help-block"><span translate="">(regular expression to exclude any CSS assets, e.g. bootstrap\.css|angular\.css|no-minify)</span></p>
+                        <div ng-show="settings.advanced">
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label"><span translate="">JS Minifier:</span></label>
+                                <div class="col-sm-9">
+                                    <label class="radio-inline">
+                                        <input type="radio" ng-model="settings.jsMinifier" ng-value="'false'"> <span translate="">None</span>
+                                    </label>
+                                    <label class="radio-inline">
+                                        <input type="radio" ng-model="settings.jsMinifier" ng-value="'uglifyjs'"> <span translate="">Uglify</span>
+                                    </label>
+                                    <label class="radio-inline">
+                                        <input type="radio" ng-model="settings.jsMinifier" ng-value="'jsMin'"> <span translate="">JsMin</span>
+                                    </label>
+                                </div>
+                            </div>
+
+
+                            <div class="form-group" ng-show="settings.css.files">
+                                <label class="col-sm-3 control-label" for="exclude_css"><span translate="">Exclude CSS assets:</span></label>
+                                <div class="col-sm-9">
+                                    <input type="text" class="form-control" id="exclude_css" placeholder="Regular expression to exclude any CSS assets (optional)" ng-model="settings.css.excludes"
+                                           ng-required="false">
+                                    <p class="help-block"><span translate="">(regular expression to exclude any CSS assets, e.g. bootstrap\.css|angular\.css|no-minify)</span></p>
+                                </div>
+                            </div>
+
+                            <div class="form-group" ng-show="settings.js.files && settings.advanced">
+                                <label class="col-sm-3 control-label" for="exclude_css"><span translate="">Exclude JS assets:</span></label>
+                                <div class="col-sm-9">
+                                    <input type="text" class="form-control" id="exclude_css" placeholder="Regular expression to exclude any JS assets (optional)" ng-model="settings.js.excludes"
+                                           ng-required="false">
+                                    <p class="help-block"><span translate="">(regular expression to exclude any JS assets, e.g. angular\.js|\.min\.js)</span></p>
+                                </div>
                             </div>
                         </div>
-
-                        <div class="form-group" ng-show="settings.js.files && settings.advanced">
-                            <label class="col-sm-3 control-label" for="exclude_css"><span translate="">Exclude JS assets:</span></label>
-                            <div class="col-sm-9">
-                                <input type="text" class="form-control" id="exclude_css" placeholder="Regular expression to exclude any JS assets (optional)" ng-model="settings.js.excludes"
-                                       ng-required="false">
-                                <p class="help-block"><span translate="">(regular expression to exclude any JS assets, e.g. angular\.js|\.min\.js)</span></p>
-                            </div>
-                        </div>
-
                     </div>
 
                     <div class="box-footer with-border">

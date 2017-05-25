@@ -4,6 +4,7 @@
  * Date: 9/13/2016
  * Time: 4:34 PM
  */
+
 namespace Minute\Minify {
 
     use App\Config\BootLoader;
@@ -13,7 +14,7 @@ namespace Minute\Minify {
     use Assetic\Filter\CssImportFilter;
     use Assetic\Filter\CssMinFilter;
     use Assetic\Filter\CssRewriteFilter;
-    use Assetic\Filter\UglifyJs2Filter;
+    use Assetic\Filter\JSMinFilter;
     use Assetic\Filter\UglifyJsFilter;
     use Carbon\Carbon;
     use Minute\Cache\QCache;
@@ -31,9 +32,9 @@ namespace Minute\Minify {
          */
         protected $version;
         /**
-         * @var string
+         * @var
          */
-        protected $uglify;
+        protected $jsMinifier;
         /**
          * @var QCache
          */
@@ -89,8 +90,8 @@ namespace Minute\Minify {
                             return $this->config->get(self::MINIFY_KEY);
                         }, 3600);
 
-                        $this->version = ($settings['version'] ?? 0) ?: 0.01;
-                        $this->uglify  = @$settings['uglify'] ?: '/usr/local/bin/uglifyjs';
+                        $this->version    = ($settings['version'] ?? 0) ?: 0.01;
+                        $this->jsMinifier = $settings['jsMinifier'] ?? false;
 
                         if (!empty($settings['css']['files'])) {
                             $content = $this->compress('#<lin' . 'k (?:.+)?href="(/static/(?!cache/)[^"]+\.css)"(?:.*)/?>(\r?\n)+?#', $content, 'css', $settings['css']['excludes'] ?? null);
@@ -128,26 +129,30 @@ namespace Minute\Minify {
             if (!empty($files)) {
                 MMinifiedDatum::unguard(true);
 
-                $name   = sprintf('%s.%s', md5(json_encode($files)), $type);
-                $count  = MMinifiedDatum::where('name', '=', $name)->where('version', '=', $this->version)->count();
-                $uglify = null;
+                $name  = sprintf('%s.%s', md5(json_encode($files)), $type);
+                $count = MMinifiedDatum::where('name', '=', $name)->where('version', '=', $this->version)->count();
 
                 if (empty($count)) {
                     set_time_limit(120);
 
-                    if (file_exists($this->uglify)) {
-                        $uglify = new UglifyJsFilter($this->uglify);
+                    $jsFilters = [];
+
+                    if (($this->jsMinifier == 'uglifyjs') && ($uglifyJs = file_exists('/usr/local/bin/uglifyjs'))) {
+                        $uglify = new UglifyJsFilter($uglifyJs);
                         $uglify->setMangle(false);
+                        $jsFilters = [$uglify];
+                    } elseif ($this->jsMinifier == 'jsMin') {
+                        $jsFilters = [new JSMinFilter()];
                     }
 
                     $host  = $this->config->getPublicVars('host');
-                    $asset = new AssetCollection(array_filter(array_map(function ($url) use ($type, $host, $uglify) {
+                    $asset = new AssetCollection(array_filter(array_map(function ($url) use ($type, $host, $jsFilters) {
                         $minified = preg_match('/\.min/', $url);
 
                         if ($type === 'css') {
                             $filters = array_merge([new CssImportFilter(), new CssRewriteFilter()], !$minified ? [new CssMinFilter()] : []);
                         } elseif (!$minified) {
-                            $filters = !$minified && !empty($uglify) ? [$uglify] : [];//new JSMinFilter()]; //JSMinFilter breaks scripts sometimes :/
+                            $filters = !$minified ? $jsFilters : [];
                         }
 
                         $url = filter_var($url, FILTER_VALIDATE_URL) ? $url : sprintf("%s/%s", $host, ltrim($url, '/'));
@@ -164,7 +169,7 @@ namespace Minute\Minify {
                         $contents = preg_replace('~http://~i', '//', $contents);
                     }
 
-                    if (MMinifiedDatum::create(['name' => $name, 'version' => $this->version, 'content' => $contents, 'created_at' => Carbon::now()])) {
+                    if ($record = MMinifiedDatum::create(['name' => $name, 'version' => (string) $this->version, 'content' => $contents, 'created_at' => Carbon::now()])) {
                         $count = 1;
                     }
                 }
