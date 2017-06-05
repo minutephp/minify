@@ -96,10 +96,12 @@ namespace Minute\Minify {
                         $dom = new DOMDocument();
                         $dom->loadHTML($content);
 
-                        $assets = $delete = [];
-                        $host   = $this->config->getPublicVars('host');
-                        $min    = function ($url) { return stripos($url, '.min.') !== false; };
-                        $url    = function ($url) use ($host) {
+                        $assets = $delete = $sources = [];
+
+                        $host = $this->config->getPublicVars('host');
+                        $min  = function ($url) { return stripos($url, '.min.') !== false; };
+                        $url  = function ($url) use ($host) {
+                            $url = preg_match('~^//~', $url) ? "https:$url" : $url;
                             $url = filter_var($url, FILTER_VALIDATE_URL) ? $url : sprintf("%s/%s", $host, ltrim($url, '/'));
                             $url = sprintf("%s%scacheBuster=%s", $url, strpos('?', $url) !== false ? '&' : '?', rand(11111, 99999999999999));
 
@@ -110,19 +112,21 @@ namespace Minute\Minify {
                         foreach ($dom->getElementsByTagName('script') as $item) {
                             if (($src = $item->getAttribute('src')) && !preg_match('~/cache/~', $src)) {
                                 $assets['js'][] = new HttpAsset($url($src), [new JSConcatFilter()], true);;
-                                $delete['js'][] = $item;
+                                $sources['js'][] = $src;
+                                $delete['js'][]  = $item;
                             }
                         }
 
                         foreach ($dom->getElementsByTagName('link') as $item) {
                             if (($item->getAttribute('rel') == 'stylesheet') && ($src = $item->getAttribute('href')) && !preg_match('~/cache/~', $src)) {
                                 $assets['css'][] = new HttpAsset($url($src), array_merge([new CssImportFilter(), new CssRewriteFilter()], !$min($src) ? [new CssMinFilter()] : []), true);;
-                                $delete['css'][] = $item;
+                                $sources['css'][] = $src;
+                                $delete['css'][]  = $item;
                             }
                         }
 
                         foreach ($assets as $type => $urls) {
-                            $name  = sprintf('%s.%s', md5(json_encode(array_map(function (HttpAsset $u) { return $u->getSourcePath(); }, $urls))), $type);
+                            $name  = sprintf('%s.%s', md5(json_encode($sources[$type])), $type);
                             $found = MMinifiedDatum::where('name', '=', $name)->where('version', '=', $this->version)->count();
 
                             if (!$found) {
@@ -130,6 +134,10 @@ namespace Minute\Minify {
                                 $asset->setTargetPath(sprintf('/static/cache/%s/', $type));
 
                                 if ($contents = $asset->dump()) {
+                                    if ($type === 'css') { //hack
+                                        $contents = preg_replace('~http://~i', '//', $contents);
+                                    }
+
                                     if (MMinifiedDatum::create(['name' => $name, 'version' => (string) $this->version, 'content' => $contents, 'created_at' => Carbon::now()])) {
                                         $found = true;
                                     }
@@ -141,7 +149,7 @@ namespace Minute\Minify {
                                     $item->parentNode->removeChild($item);
                                 }
 
-                                $url = "/static/cache/$this->version/$name";
+                                $url = sprintf("%s/static/cache/%s/%s", preg_replace('/^https?:/', '', $host), $this->version, $name);
 
                                 if ($type == 'css') {
                                     $tag = $dom->createElement('link');
@@ -157,8 +165,8 @@ namespace Minute\Minify {
                             }
                         }
 
+                        $dom->formatOutput = true;;
                         $dom->preserveWhiteSpace = false;
-                        $dom->formatOutput       = true;
 
                         $response->setContent($dom->saveHTML());
                     }
