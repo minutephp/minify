@@ -11,11 +11,13 @@ namespace Minute\Minify {
     use App\Model\MMinifiedDatum;
     use Assetic\Asset\AssetCollection;
     use Assetic\Asset\HttpAsset;
+    use Assetic\Asset\StringAsset;
     use Assetic\Filter\CssImportFilter;
     use Assetic\Filter\CssMinFilter;
     use Assetic\Filter\CssRewriteFilter;
     use Carbon\Carbon;
     use DOMDocument;
+    use Masterminds\Html5;
     use Minute\Cache\QCache;
     use Minute\Config\Config;
     use Minute\Debug\Debugger;
@@ -77,101 +79,109 @@ namespace Minute\Minify {
             $this->utils      = $utils;
             $this->logger     = $logger;
             $this->debugger   = $debugger;
+
+            MMinifiedDatum::unguard();
         }
 
         public function minify(ResponseEvent $event) {
             if ($event->isSimpleHtmlResponse()) {
-                /** @var HttpResponseEx $response */
-                $response = $event->getResponse();
+                $settings = $this->cache->get('minify-settings', function () {
+                    return $this->config->get(self::MINIFY_KEY);
+                }, 3600);
 
-                try {
-                    if ($content = $response->getContent()) {
-                        $settings = $this->cache->get('minify-settings', function () {
-                            return $this->config->get(self::MINIFY_KEY);
-                        }, 3600);
+                if (($settings['css']['files'] ?? false) || ($settings['js']['files'] ?? false)) {
+                    /** @var HttpResponseEx $response */
+                    $response = $event->getResponse();
 
-                        $this->version    = ($settings['version'] ?? 0) ?: 0.01;
-                        $this->jsMinifier = $settings['jsMinifier'] ?? false;
+                    try {
+                        if ($content = $response->getContent()) {
+                            $this->version    = ($settings['version'] ?? 0) ?: 0.01;
+                            $this->jsMinifier = $settings['jsMinifier'] ?? false;
 
-                        $dom = new DOMDocument();
-                        $dom->loadHTML($content);
+                            $html5  = new HTML5();
+                            $dom    = $html5->loadHTML($content);
+                            $assets = $delete = $sources = [];
 
-                        $assets = $delete = $sources = [];
+                            $host = $this->config->getPublicVars('host');
+                            $min  = function ($url) { return stripos($url, '.min.') !== false; };
+                            $url  = function ($url) use ($host) {
+                                $url = preg_match('~^//~', $url) ? "https:$url" : $url;
+                                $url = filter_var($url, FILTER_VALIDATE_URL) ? $url : sprintf("%s/%s", $host, ltrim($url, '/'));
+                                $url = sprintf("%s%scacheBuster=%s", $url, strpos('?', $url) !== false ? '&' : '?', rand(11111, 99999999999999));
 
-                        $host = $this->config->getPublicVars('host');
-                        $min  = function ($url) { return stripos($url, '.min.') !== false; };
-                        $url  = function ($url) use ($host) {
-                            $url = preg_match('~^//~', $url) ? "https:$url" : $url;
-                            $url = filter_var($url, FILTER_VALIDATE_URL) ? $url : sprintf("%s/%s", $host, ltrim($url, '/'));
-                            $url = sprintf("%s%scacheBuster=%s", $url, strpos('?', $url) !== false ? '&' : '?', rand(11111, 99999999999999));
+                                return $url;
+                            };
 
-                            return $url;
-                        };
-
-                        /** @var \DOMElement $item */
-                        foreach ($dom->getElementsByTagName('script') as $item) {
-                            if (($src = $item->getAttribute('src')) && !preg_match('~/cache/~', $src)) {
-                                $assets['js'][] = new HttpAsset($url($src), [new JSConcatFilter()], true);;
-                                $sources['js'][] = $src;
-                                $delete['js'][]  = $item;
-                            }
-                        }
-
-                        foreach ($dom->getElementsByTagName('link') as $item) {
-                            if (($item->getAttribute('rel') == 'stylesheet') && ($src = $item->getAttribute('href')) && !preg_match('~/cache/~', $src)) {
-                                $assets['css'][] = new HttpAsset($url($src), array_merge([new CssImportFilter(), new CssRewriteFilter()], !$min($src) ? [new CssMinFilter()] : []), true);;
-                                $sources['css'][] = $src;
-                                $delete['css'][]  = $item;
-                            }
-                        }
-
-                        foreach ($assets as $type => $urls) {
-                            $name  = sprintf('%s.%s', md5(json_encode($sources[$type])), $type);
-                            $found = MMinifiedDatum::where('name', '=', $name)->where('version', '=', $this->version)->count();
-
-                            if (!$found) {
-                                $asset = new AssetCollection($urls);
-                                $asset->setTargetPath(sprintf('/static/cache/%s/', $type));
-
-                                if ($contents = $asset->dump()) {
-                                    if ($type === 'css') { //hack
-                                        $contents = preg_replace('~http://~i', '//', $contents);
-                                    }
-
-                                    if (MMinifiedDatum::create(['name' => $name, 'version' => (string) $this->version, 'content' => $contents, 'created_at' => Carbon::now()])) {
-                                        $found = true;
+                            if ($settings['js']['files'] ?? false) {
+                                /** @var \DOMElement $item */
+                                foreach ($dom->getElementsByTagName('script') as $item) {
+                                    if (($src = $item->getAttribute('src')) && !preg_match('~/cache/~', $src)) {
+                                        $assets['js'][] = new HttpAsset($url($src), [new JSConcatFilter()], true);;
+                                        $sources['js'][] = $src;
+                                        $delete['js'][]  = $item;
                                     }
                                 }
                             }
 
-                            if ($found) {
-                                foreach ($delete[$type] as $item) {
-                                    $item->parentNode->removeChild($item);
-                                }
-
-                                $url = sprintf("%s/static/cache/%s/%s", preg_replace('/^https?:/', '', $host), $this->version, $name);
-
-                                if ($type == 'css') {
-                                    $tag = $dom->createElement('link');
-                                    $tag->setAttribute('href', $url);
-                                    $tag->setAttribute('rel', 'stylesheet');
-                                    $dom->getElementsByTagName('head')->item(0)->appendChild($tag);
-                                } else {
-                                    $tag = $dom->createElement('script');
-                                    $tag->setAttribute('src', $url);
-                                    $script = $dom->getElementsByTagName('script')->item(0);
-                                    $script->parentNode->insertBefore($tag, $script);
+                            if ($settings['css']['files'] ?? false) {
+                                foreach ($dom->getElementsByTagName('link') as $item) {
+                                    if (($item->getAttribute('rel') == 'stylesheet') && ($src = $item->getAttribute('href')) && !preg_match('~/cache/~', $src)) {
+                                        $assets['css'][] = new HttpAsset($url($src), array_merge([new CssImportFilter(), new CssRewriteFilter()], !$min($src) ? [new CssMinFilter()] : []), true);;
+                                        $sources['css'][] = $src;
+                                        $delete['css'][]  = $item;
+                                    }
                                 }
                             }
+
+                            foreach ($assets as $type => $urls) {
+                                $name  = sprintf('%s.%s', md5(json_encode($sources[$type])), $type);
+                                $found = MMinifiedDatum::where('name', '=', $name)->where('version', '=', $this->version)->count();
+
+                                if (!$found) {
+                                    $asset = new AssetCollection($urls);
+                                    $asset->setTargetPath(sprintf('/static/cache/%s/', $type));
+
+                                    if ($contents = $asset->dump()) {
+                                        if ($type === 'css') { //hack
+                                            $contents = preg_replace('~http://~i', '//', $contents);
+                                        }
+
+                                        if (MMinifiedDatum::create(['name' => $name, 'version' => (string) $this->version, 'content' => $contents, 'created_at' => Carbon::now()])) {
+                                            $found = true;
+                                        }
+                                    }
+                                }
+
+                                if ($found) {
+                                    foreach ($delete[$type] as $item) {
+                                        $item->parentNode->removeChild($item);
+                                    }
+
+                                    $url = sprintf("%s/static/cache/%s/%s", preg_replace('/^https?:/', '', $host), $this->version, $name);
+
+                                    if ($type == 'css') {
+                                        $tag = $dom->createElement('link');
+                                        $tag->setAttribute('href', $url);
+                                        $tag->setAttribute('rel', 'stylesheet');
+                                        $dom->getElementsByTagName('head')->item(0)->appendChild($tag);
+                                    } else {
+                                        $tag = $dom->createElement('script');
+                                        $tag->setAttribute('src', $url);
+
+                                        if ($script = $dom->getElementsByTagName('script')->item(0)) {
+                                            $script->parentNode->insertBefore($tag, $script);
+                                        } else {
+                                            $dom->getElementsByTagName('body')->item(0)->appendChild($tag);
+                                        }
+                                    }
+                                }
+                            }
+
+                            $response->setContent($dom->saveHTML());
                         }
-
-                        $dom->formatOutput = true;;
-                        $dom->preserveWhiteSpace = false;
-
-                        $response->setContent($dom->saveHTML());
+                    } catch (\Exception $e) {
+                        $this->logger->error("Minify error: " . $e->getMessage());
                     }
-                } catch (\Exception $e) {
-                    $this->logger->error("Minify error: " . $e->getMessage());
                 }
             }
         }
