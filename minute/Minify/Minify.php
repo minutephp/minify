@@ -11,12 +11,10 @@ namespace Minute\Minify {
     use App\Model\MMinifiedDatum;
     use Assetic\Asset\AssetCollection;
     use Assetic\Asset\HttpAsset;
-    use Assetic\Asset\StringAsset;
     use Assetic\Filter\CssImportFilter;
     use Assetic\Filter\CssMinFilter;
     use Assetic\Filter\CssRewriteFilter;
     use Carbon\Carbon;
-    use DOMDocument;
     use Masterminds\Html5;
     use Minute\Cache\QCache;
     use Minute\Config\Config;
@@ -177,7 +175,7 @@ namespace Minute\Minify {
                                 }
                             }
 
-                            $response->setContent($dom->saveHTML());
+                            $response->setContent($html5->saveHTML($dom));
                         }
                     } catch (\Exception $e) {
                         $this->logger->error("Minify error: " . $e->getMessage());
